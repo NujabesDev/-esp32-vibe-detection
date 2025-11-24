@@ -41,6 +41,13 @@
 
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
+#include <WiFi.h>
+#include <esp_now.h>
+
+// ESP-NOW Configuration
+// IMPORTANT: Replace this with your receiver ESP32's MAC address
+// To get MAC address, upload this sketch to receiver and check Serial output
+uint8_t receiverMAC[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};  // Broadcast MAC (replace with actual MAC)
 
 // I2S Configuration - Standard Pins
 #define I2S_WS    15    // LRCL (Word Select)
@@ -145,6 +152,13 @@ VibeState getSmoothedVibeState() {
   return (VibeState)smoothed_state;
 }
 
+// ESP-NOW send callback
+void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  // Optional: uncomment for debugging transmission status
+  // Serial.print("ESP-NOW Send Status: ");
+  // Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+}
+
 void setup() {
   Serial.begin(115200);
   while (!Serial) delay(10);
@@ -212,6 +226,38 @@ void setup() {
   for (int i = 0; i < STATE_HISTORY_SIZE; i++) {
     state_history[i] = AMBIENT;  // Start with neutral state
   }
+
+  // Initialize WiFi and ESP-NOW
+  WiFi.mode(WIFI_STA);
+  Serial.print("✓ WiFi MAC Address: ");
+  Serial.println(WiFi.macAddress());
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ERROR: ESP-NOW init failed");
+    return;
+  }
+  Serial.println("✓ ESP-NOW initialized");
+
+  // Register send callback
+  esp_now_register_send_cb(onDataSent);
+
+  // Add peer (receiver ESP32)
+  esp_now_peer_info_t peerInfo;
+  memcpy(peerInfo.peer_addr, receiverMAC, 6);
+  peerInfo.channel = 0;  // Use current WiFi channel
+  peerInfo.encrypt = false;  // No encryption for simplicity
+
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("ERROR: Failed to add ESP-NOW peer");
+    return;
+  }
+  Serial.println("✓ ESP-NOW peer added");
+  Serial.print("  Receiver MAC: ");
+  for (int i = 0; i < 6; i++) {
+    Serial.printf("%02X", receiverMAC[i]);
+    if (i < 5) Serial.print(":");
+  }
+  Serial.println("\n");
 
   delay(500); // Let I2S stabilize
 }
@@ -413,6 +459,13 @@ void loop() {
   // Get smoothed state using weighted average voting
   VibeState smoothed_state = getSmoothedVibeState();
   packet.vibe_state = smoothed_state;
+
+  // Send vibe packet via ESP-NOW (every loop iteration for real-time updates)
+  esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&packet, sizeof(packet));
+  // Uncomment for debugging:
+  // if (result != ESP_OK) {
+  //   Serial.println("ESP-NOW send failed");
+  // }
 
   // Display results periodically
   if (now - last_display >= DISPLAY_INTERVAL) {
