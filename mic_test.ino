@@ -1,6 +1,6 @@
 /*
  * SPH0645LM4H I2S MEMS Microphone + FFT Analysis
- * with Adaptive Auto-Calibration
+ * with Adaptive Auto-Calibration & Vibe Detection
  *
  * Standard Wiring:
  * BCLK  → GPIO14
@@ -14,15 +14,22 @@
  * - Sound pressure level (dB SPL)
  * - FFT frequency analysis (512-point)
  * - Frequency band detection (Bass, Mids, Highs)
- * - Dominant frequency detection
- * - Peak detection
  * - Adaptive min/max tracking (auto-calibrates to room)
+ * - Vibe state classification (SILENT/AMBIENT/CONVERSATION/MUSIC/PARTY)
+ * - Trend detection (getting louder/quieter)
+ * - Data packet generation for ESP-NOW/I2C transmission
  *
  * Adaptive Calibration Features:
  * - Automatically learns room's noise floor (min) and typical loudness (max)
  * - Scales adjust dynamically over time
  * - Works in both quiet and loud environments
  * - Prevents scale collapse with minimum range enforcement
+ *
+ * Vibe Detection:
+ * - Classifies room state based on loudness and frequency distribution
+ * - Outputs 6-byte packet: dB%, bass%, mids%, highs%, vibe_state, delta
+ * - Ready for ESP-NOW transmission to other ESP32s
+ * - Can be forwarded via I2C to Arduinos for LED/servo/display control
  *
  * Requires: arduinoFFT library
  * Open Serial Monitor (115200 baud) for stats
@@ -82,6 +89,29 @@ float adaptive_band_max = 1000.0;    // Start low, will adapt up
 double vReal[FFT_SIZE];
 double vImag[FFT_SIZE];
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, FFT_SIZE, SAMPLING_FREQ);
+
+// Vibe State Detection
+enum VibeState {
+  SILENT = 0,      // Very quiet, minimal activity
+  AMBIENT = 1,     // Background noise, no distinct activity
+  CONVERSATION = 2,// Mid-range dominant (speech)
+  MUSIC = 3,       // Balanced spectrum with bass/highs
+  PARTY = 4        // High energy, bass dominant, loud
+};
+
+// Data packet for transmission (ESP-NOW → I2C)
+struct VibePacket {
+  uint8_t db_percent;      // 0-100: Current dB as % of adaptive range
+  uint8_t bass_percent;    // 0-100: Bass energy as % of adaptive range
+  uint8_t mids_percent;    // 0-100: Mids energy as % of adaptive range
+  uint8_t highs_percent;   // 0-100: Highs energy as % of adaptive range
+  uint8_t vibe_state;      // VibeState enum value
+  int8_t db_delta;         // -100 to +100: dB change rate (trend)
+} __attribute__((packed));
+
+// Delta tracking for trend detection
+float last_db = 0;
+unsigned long last_delta_time = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -288,8 +318,63 @@ void loop() {
     adaptive_band_min = constrain(adaptive_band_min, BAND_FLOOR, BAND_CEILING);
   }
 
-  // Display results periodically
+  // ===== VIBE PACKET CALCULATION =====
+  VibePacket packet;
+
+  // Calculate dB delta (rate of change per second)
   unsigned long now = millis();
+  float time_diff = (now - last_delta_time) / 1000.0;  // Convert to seconds
+
+  if (time_diff > 0 && last_delta_time > 0) {
+    float db_change = db - last_db;
+    float db_rate = db_change / time_diff;  // dB per second
+
+    // Clamp to -100 to +100 range for int8_t
+    packet.db_delta = constrain((int)(db_rate * 10), -100, 100);
+  } else {
+    packet.db_delta = 0;  // First reading or invalid time
+  }
+
+  last_db = db;
+  last_delta_time = now;
+
+  // Normalize values to 0-100 percentages
+  float db_range = adaptive_db_max - adaptive_db_min;
+  float band_range = adaptive_band_max - adaptive_band_min;
+
+  if (db_range > 0) {
+    packet.db_percent = constrain(
+      (int)((db - adaptive_db_min) / db_range * 100.0),
+      0, 100
+    );
+  } else {
+    packet.db_percent = 0;
+  }
+
+  if (band_range > 0) {
+    packet.bass_percent = constrain(
+      (int)((bass_energy - adaptive_band_min) / band_range * 100.0),
+      0, 100
+    );
+    packet.mids_percent = constrain(
+      (int)((mids_energy - adaptive_band_min) / band_range * 100.0),
+      0, 100
+    );
+    packet.highs_percent = constrain(
+      (int)((highs_energy - adaptive_band_min) / band_range * 100.0),
+      0, 100
+    );
+  } else {
+    packet.bass_percent = 0;
+    packet.mids_percent = 0;
+    packet.highs_percent = 0;
+  }
+
+  // Detect vibe state
+  packet.vibe_state = detectVibe(db, bass_energy, mids_energy, highs_energy,
+                                  adaptive_db_min, adaptive_db_max);
+
+  // Display results periodically
   if (now - last_display >= DISPLAY_INTERVAL) {
     last_display = now;
 
@@ -335,6 +420,43 @@ void loop() {
     Serial.print(" dB | Band range=");
     Serial.print((int)(band_range / 1000));
     Serial.println("k");
+
+    // Display vibe packet (ready for ESP-NOW transmission)
+    Serial.println("--- VIBE PACKET (ESP-NOW Ready) ---");
+    Serial.print("Vibe State: ");
+    Serial.print(vibeStateToString((VibeState)packet.vibe_state));
+    Serial.print(" (");
+    Serial.print(packet.vibe_state);
+    Serial.println(")");
+
+    Serial.print("Levels (%)  → dB:");
+    Serial.print(packet.db_percent);
+    Serial.print(" B:");
+    Serial.print(packet.bass_percent);
+    Serial.print(" M:");
+    Serial.print(packet.mids_percent);
+    Serial.print(" H:");
+    Serial.print(packet.highs_percent);
+    Serial.println();
+
+    Serial.print("Trend: ");
+    if (packet.db_delta > 10) {
+      Serial.print("↗ GETTING LOUDER (+");
+      Serial.print(packet.db_delta);
+      Serial.println(")");
+    } else if (packet.db_delta < -10) {
+      Serial.print("↘ GETTING QUIETER (");
+      Serial.print(packet.db_delta);
+      Serial.println(")");
+    } else {
+      Serial.print("→ STEADY (");
+      Serial.print(packet.db_delta);
+      Serial.println(")");
+    }
+
+    Serial.print("Packet size: ");
+    Serial.print(sizeof(packet));
+    Serial.println(" bytes");
     Serial.println();
   }
 
@@ -368,6 +490,69 @@ void printMiniBar(float energy, float min_energy, float max_energy) {
   }
   for (int i = bars; i < 8; i++) {
     Serial.print("·");
+  }
+}
+
+// Detect vibe state based on dB level and frequency distribution
+VibeState detectVibe(float db, float bass, float mids, float highs,
+                     float db_min, float db_max) {
+  // Calculate relative loudness (0.0 to 1.0+ in adaptive range)
+  float relative_db = 0;
+  if (db_max > db_min) {
+    relative_db = (db - db_min) / (db_max - db_min);
+  }
+
+  // Calculate frequency distribution ratios
+  float total_energy = bass + mids + highs;
+  float bass_ratio = 0, mids_ratio = 0, highs_ratio = 0;
+
+  if (total_energy > 0) {
+    bass_ratio = bass / total_energy;
+    mids_ratio = mids / total_energy;
+    highs_ratio = highs / total_energy;
+  }
+
+  // Classification logic
+  // SILENT: Very quiet, bottom 15% of range
+  if (relative_db < 0.15 || db < 40) {
+    return SILENT;
+  }
+
+  // AMBIENT: Quiet background, 15-40% of range
+  if (relative_db < 0.40) {
+    return AMBIENT;
+  }
+
+  // PARTY: Loud with heavy bass (>40% bass, >65% of range)
+  if (relative_db > 0.65 && bass_ratio > 0.40) {
+    return PARTY;
+  }
+
+  // CONVERSATION: Mid-range dominant (>45% mids)
+  // Speech has strong presence in 500-2000 Hz (mids)
+  if (mids_ratio > 0.45) {
+    return CONVERSATION;
+  }
+
+  // MUSIC: Balanced spectrum or bass+highs dominant
+  // Music typically has more bass and highs than conversation
+  if (bass_ratio > 0.30 || highs_ratio > 0.30) {
+    return MUSIC;
+  }
+
+  // Default: AMBIENT (shouldn't reach here often)
+  return AMBIENT;
+}
+
+// Convert vibe state enum to readable string
+const char* vibeStateToString(VibeState state) {
+  switch (state) {
+    case SILENT: return "SILENT";
+    case AMBIENT: return "AMBIENT";
+    case CONVERSATION: return "CONVERSATION";
+    case MUSIC: return "MUSIC";
+    case PARTY: return "PARTY";
+    default: return "UNKNOWN";
   }
 }
 
