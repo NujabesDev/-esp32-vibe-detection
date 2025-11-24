@@ -76,8 +76,6 @@
 int32_t samples[BUFFER_SIZE];
 size_t bytes_read;
 unsigned long last_display = 0;
-int32_t peak_max = 0;
-int32_t peak_min = 0;
 
 // Adaptive Calibration Tracking
 float adaptive_db_min = 100.0;       // Start high, will adapt down
@@ -181,22 +179,11 @@ void loop() {
 
   // Calculate RMS (Root Mean Square) for volume level
   float sum_squares = 0;
-  int32_t current_max = INT32_MIN;
-  int32_t current_min = INT32_MAX;
 
   for (int i = 0; i < samples_read; i++) {
     // SPH0645 outputs 18-bit data in 32-bit format, shift to get proper range
     int32_t sample = samples[i] >> 14;  // Convert to 18-bit signed
-
     sum_squares += (float)sample * sample;
-
-    // Track peaks
-    if (sample > current_max) current_max = sample;
-    if (sample < current_min) current_min = sample;
-
-    // Update global peaks
-    if (sample > peak_max) peak_max = sample;
-    if (sample < peak_min) peak_min = sample;
   }
 
   // Calculate RMS amplitude
@@ -253,9 +240,6 @@ void loop() {
       highs_energy += magnitude;
     }
   }
-
-  // Find dominant frequency (peak)
-  double peak_freq = FFT.majorPeak();
 
   // ===== ADAPTIVE CALIBRATION =====
   // Update adaptive dB range
@@ -383,9 +367,7 @@ void loop() {
     Serial.print(db, 1);
     Serial.print(" dB SPL | RMS: ");
     Serial.print(rms, 0);
-    Serial.print(" | Peak Freq: ");
-    Serial.print(peak_freq, 0);
-    Serial.println(" Hz");
+    Serial.println();
 
     // Print frequency band energies
     Serial.print("FFT Bands → Bass: ");
@@ -554,17 +536,4 @@ const char* vibeStateToString(VibeState state) {
     case PARTY: return "PARTY";
     default: return "UNKNOWN";
   }
-}
-
-// Test summary (call this from loop if you want periodic summaries)
-void printSummary() {
-  Serial.println("\n--- Microphone Test Summary ---");
-  Serial.print("Peak Amplitude: ");
-  Serial.print(peak_max);
-  Serial.print(" / ");
-  Serial.println(peak_min);
-  Serial.print("Dynamic Range: ");
-  Serial.print((peak_max - peak_min));
-  Serial.println(" (18-bit max: 262144)");
-  Serial.println("-------------------------------\n");
 }
