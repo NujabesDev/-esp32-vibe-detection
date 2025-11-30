@@ -432,9 +432,21 @@ void requestButtonData() {
     uint8_t buttonData = Wire.read();
     if (buttonData > 0 && buttonData <= 5) {
       addHumanVibeSample(buttonData);  // Track for human sentiment
+
+      // Forward button data to LCD Arduino (0x0A)
+      Wire.beginTransmission(0x0A);
+      Wire.write(buttonData);
+      uint8_t result = Wire.endTransmission();
+
       Serial.print("Button ");
       Serial.print(buttonData);
-      Serial.println(" pressed");
+      Serial.print(" pressed");
+      if (result == 0) {
+        Serial.println(" → forwarded to LCD");
+      } else {
+        Serial.print(" → LCD forward error ");
+        Serial.println(result);
+      }
     }
   }
 }

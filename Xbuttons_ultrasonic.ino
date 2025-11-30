@@ -1,7 +1,6 @@
 #include <Wire.h>
 #include <Servo.h>
 
-#define OTHER_ARDUINO_ADDRESS 0x0A
 #define MY_I2C_ADDRESS 0x08
 #define ENABLE_ULTRASONIC true
 
@@ -91,7 +90,8 @@ void handleButtons() {
 
 // ======= BUTTON ACTION =======
 void handleButtonAction(int button){
-  notifyOtherArduino(button);
+  // ESP32 will forward button data to LCD Arduino
+  // No need for direct Arduino-to-Arduino communication
   switch(button){
     case 1: moveServoTo(0); break;
     case 2: moveServoTo(45); break;
@@ -147,13 +147,4 @@ void requestEvent(){
     Wire.write((uint8_t)((lastDistance >> 8) & 0xFF)); // MSB
   }
   i2cCommand = 0; // reset
-}
-
-// ======= NOTIFY OTHER ARDUINO =======
-void notifyOtherArduino(uint8_t button){
-  Wire.beginTransmission(OTHER_ARDUINO_ADDRESS);
-  Wire.write(button);
-  Wire.endTransmission();
-  Serial.print("Sent button "); Serial.print(button);
-  Serial.println(" to Arduino @0x0A");
 }
