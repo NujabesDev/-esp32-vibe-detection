@@ -16,10 +16,11 @@
 #define ENABLE_I2C_FORWARD true
 
 // Multiple Arduino slave addresses
-#define ARDUINO_1_ADDRESS 0x08
-#define ARDUINO_2_ADDRESS 0x09
-const uint8_t arduinoAddresses[] = {ARDUINO_1_ADDRESS, ARDUINO_2_ADDRESS};
-const int numArduinos = 2;
+#define ARDUINO_1_ADDRESS 0x08  // Buttons/Ultrasonic
+#define ARDUINO_2_ADDRESS 0x09  // Servo
+#define ARDUINO_3_ADDRESS 0x0B  // LED
+const uint8_t arduinoAddresses[] = {ARDUINO_1_ADDRESS, ARDUINO_2_ADDRESS, ARDUINO_3_ADDRESS};
+const int numArduinos = 3;
 
 // ========== DISPLAY CONFIGURATION ==========
 // TFT Display Colors
@@ -398,7 +399,9 @@ void setup() {
     Serial.print("  → Arduinos at: 0x");
     Serial.print(ARDUINO_1_ADDRESS, HEX);
     Serial.print(", 0x");
-    Serial.println(ARDUINO_2_ADDRESS, HEX);
+    Serial.print(ARDUINO_2_ADDRESS, HEX);
+    Serial.print(", 0x");
+    Serial.println(ARDUINO_3_ADDRESS, HEX);
   #else
     Serial.println("✓ I2C forwarding disabled");
   #endif

@@ -13,13 +13,10 @@ volatile VibePacket pkt;
 // LED pins for 5-level meter
 const int ledPins[5] = {8, 9, 10, 11, 12};
 
-unsigned long lastUpdate = 0;
-const unsigned long updateInterval = 200;
-
 void setup() {
   Serial.begin(9600);
 
-  Wire.begin(9);            // <-- LED SLAVE ADDRESS
+  Wire.begin(0x0B);         // <-- LED SLAVE ADDRESS
   Wire.onReceive(receiveEvent);
 
   // Initialize LED pins
