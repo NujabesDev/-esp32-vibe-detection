@@ -29,7 +29,6 @@ void setup() {
 void loop() {
   unsigned long currentTime = millis();
 
-  // servo update every interval
   if (currentTime - lastUpdate >= updateInterval) {
     lastUpdate = currentTime;
 
@@ -38,11 +37,12 @@ void loop() {
     Serial.print("Received dB%: ");
     Serial.println(value);
 
-    // Convert 0–100 → 0–4 level
-    int level = value / 25;
-    if (level > 4) level = 4;
+    // Map 50–100 → 0–4 level
+    int level = map(value, 60, 100, 0, 4);
+    level = constrain(level, 0, 4);
 
-    // Reverse direction
+    // Convert level (0–4) into servo angle
+    // Each step = 45°, reversed
     int angle = 180 - (level * 45);
 
     Serial.print("Level: ");

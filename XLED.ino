@@ -32,23 +32,17 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  if (now - lastUpdate >= updateInterval) {
-    lastUpdate = now;
+  int value = pkt.db_percent;
 
-    int value = pkt.db_percent;
+  // map 50–100 → 0–4
+  int level = map(value, 60, 100, 0, 4);
+  level = constrain(level, 0, 4);
 
-    Serial.print("LED Slave dB%: ");
-    Serial.println(value);
-
-    // compute 0–4 level
-    int level = value / 25;
-    if (level > 4) level = 4;
-
-    // turn on LEDs up to "level"
-    for (int i = 0; i < 5; i++) {
-      digitalWrite(ledPins[i], (i <= level) ? HIGH : LOW);
-    }
+  // update LEDs
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(ledPins[i], (i <= level) ? HIGH : LOW);
   }
+
 }
 
 void receiveEvent(int howMany) {
