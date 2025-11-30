@@ -50,6 +50,7 @@ const uint16_t SCREEN_OFF_THRESHOLD = 55;  // Turn screen off if > 55cm
 const int NUM_BARS = 32;
 const int SPECTRUM_Y = 250;     // Bottom of bars
 const int SPECTRUM_H = 150;     // Max height
+const float SPECTRUM_GAIN = 1.8; // Sensitivity boost (1.0 = no boost, 2.0 = double)
 
 // ========== DATA STRUCTURES ==========
 enum VibeState {
@@ -263,7 +264,7 @@ void updateBottomStats() {
 void updateSpectrum() {
   // Simple grouped blocks - honest representation of 3-band data
   for (int i = 0; i < NUM_BARS; i++) {
-    int target = 0;
+    float target = 0;
 
     // Divide bars into 3 equal-ish sections
     if (i < 10) { // BASS (bars 0-9)
@@ -273,6 +274,9 @@ void updateSpectrum() {
     } else { // HIGHS (bars 21-31)
       target = displayPacket.highs_percent;
     }
+
+    // Apply sensitivity boost
+    target *= SPECTRUM_GAIN;
 
     // Tiny random variation for visual texture (not fake data)
     target += random(-1, 2);
