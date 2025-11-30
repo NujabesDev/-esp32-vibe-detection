@@ -65,7 +65,6 @@ struct VibePacket {
   uint8_t mids_percent;
   uint8_t highs_percent;
   uint8_t vibe_state;
-  int8_t db_delta;
 } __attribute__((packed));
 
 // ========== GLOBAL VARIABLES ==========
@@ -81,7 +80,6 @@ NimBLEScan* bleScanner;
 
 // Display state
 int deviceCount = 0;
-int bleCount = 0;
 uint16_t ultrasonicDistance = 0;
 bool screenOn = true;
 
@@ -484,8 +482,7 @@ void loop() {
   // BLE scan every 2 seconds
   if (millis() - lastScan > 2000) {
     lastScan = millis();
-    bleCount = scanBLEDevices();
-    deviceCount = bleCount;
+    deviceCount = scanBLEDevices();
   }
 
   // Safely copy packet data for display (prevent race condition)

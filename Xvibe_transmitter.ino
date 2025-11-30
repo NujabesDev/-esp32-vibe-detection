@@ -22,7 +22,6 @@ uint8_t receiverMAC[] = {0x24, 0x6F, 0x28, 0x2D, 0x18, 0xD8};
 // Audio Settings
 #define SAMPLE_RATE       44100
 #define BUFFER_SIZE       512
-#define DISPLAY_INTERVAL  100
 
 // Microphone Calibration
 #define MIC_OFFSET_DB     94.0
@@ -62,48 +61,34 @@ struct VibePacket {
   uint8_t mids_percent;
   uint8_t highs_percent;
   uint8_t vibe_state;
-  int8_t db_delta;
 } __attribute__((packed));
 
 // ========== GLOBAL VARIABLES ==========
 int32_t samples[BUFFER_SIZE];
 size_t bytes_read;
-unsigned long last_display = 0;
 
 double vReal[FFT_SIZE];
 double vImag[FFT_SIZE];
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, FFT_SIZE, SAMPLING_FREQ);
 
-float last_db = 0;
-unsigned long last_delta_time = 0;
-
-// Simple smoothing
-float state_smooth = 1.0;  // Running average of vibe state (0-4 range)
 float band_max = BAND_MAX_INITIAL;  // Running max for band normalization
 
 // ========== FUNCTIONS ==========
 void onDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t status) {}
 
 VibeState detectVibe(float db, float mids_ratio) {
-  VibeState instant_state;
-
   // Simple threshold-based detection
   if (db < DB_SILENT) {
-    instant_state = SILENT;
+    return SILENT;
   } else if (db < DB_AMBIENT) {
-    instant_state = AMBIENT;
+    return AMBIENT;
   } else if (db < DB_MODERATE) {
-    instant_state = (mids_ratio > SPEECH_MIDS_RATIO) ? CONVERSATION : AMBIENT;
+    return (mids_ratio > SPEECH_MIDS_RATIO) ? CONVERSATION : AMBIENT;
   } else if (db < DB_PARTY) {
-    instant_state = (mids_ratio > SPEECH_MIDS_RATIO) ? CONVERSATION : ACTIVE;
+    return (mids_ratio > SPEECH_MIDS_RATIO) ? CONVERSATION : ACTIVE;
   } else {
-    instant_state = PARTY;
+    return PARTY;
   }
-
-  // Exponential smoothing (replaces 100-sample buffer)
-  state_smooth = state_smooth * 0.85 + instant_state * 0.15;
-
-  return (VibeState)round(constrain(state_smooth, 0, 4));
 }
 
 const char* vibeStateToString(VibeState state) {
@@ -117,15 +102,6 @@ const char* vibeStateToString(VibeState state) {
   }
 }
 
-void printBar(float db) {
-  Serial.print("[");
-  int bars = map(constrain(db, 0, DB_MAX), 0, DB_MAX, 0, 40);
-  for (int i = 0; i < bars; i++) Serial.print("=");
-  for (int i = bars; i < 40; i++) Serial.print(" ");
-  Serial.print("] ");
-  Serial.print(db, 1);
-  Serial.println(" dB");
-}
 
 // ========== SETUP ==========
 void setup() {
@@ -258,19 +234,6 @@ void loop() {
 
   // Build packet
   VibePacket packet;
-  unsigned long now = millis();
-
-  // Calculate dB delta (rate of change)
-  float time_diff = (now - last_delta_time) / 1000.0;
-  if (time_diff > 0 && last_delta_time > 0) {
-    float db_change = db - last_db;
-    float db_rate = db_change / time_diff;
-    packet.db_delta = constrain((int)(db_rate * 10), -100, 100);
-  } else {
-    packet.db_delta = 0;
-  }
-  last_db = db;
-  last_delta_time = now;
 
   // Normalize dB to percentage (0-100)
   packet.db_percent = constrain(map(db, 0, DB_MAX, 0, 100), 0, 100);
@@ -294,35 +257,4 @@ void loop() {
 
   // Send packet
   esp_now_send(receiverMAC, (uint8_t *)&packet, sizeof(packet));
-
-  // Display (commented out to reduce serial monitor spam)
-  // if (now - last_display >= DISPLAY_INTERVAL) {
-  //   last_display = now;
-
-  //   Serial.print("dB: ");
-  //   Serial.print(db, 1);
-  //   Serial.print(" | B:");
-  //   Serial.print(bass_energy, 0);
-  //   Serial.print(" M:");
-  //   Serial.print(mids_energy, 0);
-  //   Serial.print(" H:");
-  //   Serial.print(highs_energy, 0);
-  //   Serial.println();
-
-  //   printBar(db);
-
-  //   Serial.print("Vibe: ");
-  //   Serial.print(vibeStateToString((VibeState)packet.vibe_state));
-  //   Serial.print(" | Packet: dB=");
-  //   Serial.print(packet.db_percent);
-  //   Serial.print("% B=");
-  //   Serial.print(packet.bass_percent);
-  //   Serial.print(" M=");
-  //   Serial.print(packet.mids_percent);
-  //   Serial.print(" H=");
-  //   Serial.print(packet.highs_percent);
-  //   Serial.print(" Δ=");
-  //   Serial.println(packet.db_delta);
-  //   Serial.println();
-  // }
 }

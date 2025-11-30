@@ -11,18 +11,6 @@ const int servoPin = 10;
 const int trigPin = 8;
 const int echoPin = 9;
 
-// ========== DATA STRUCTURES ==========
-struct VibePacket {
-  uint8_t db_percent;
-  uint8_t bass_percent;
-  uint8_t mids_percent;
-  uint8_t highs_percent;
-  uint8_t vibe_state;
-  int8_t  db_delta;
-} __attribute__((packed));
-
-volatile VibePacket vibeData;
-
 // ======= GLOBAL VARIABLES =======
 volatile uint8_t lastButtonPressed = 0; // 1-5 or 0
 volatile int lastDistance = 0;          // cm
