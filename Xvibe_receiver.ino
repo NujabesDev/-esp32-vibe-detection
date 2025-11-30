@@ -96,7 +96,7 @@ uint8_t humanSamples[MAX_HUMAN_SAMPLES];
 uint8_t numHumanSamples = 0;
 
 // Spectrum analyzer
-int barHeight[NUM_BARS] = {0};
+float barHeight[NUM_BARS] = {0};
 
 // ========== FUNCTIONS ==========
 const char* vibeStateToString(VibeState state) {
@@ -261,24 +261,30 @@ void updateBottomStats() {
 }
 
 void updateSpectrum() {
-  // Map incoming 3-band data to 32 bars
+  // Map incoming 3-band data to 32 bars with animation
   for (int i = 0; i < NUM_BARS; i++) {
-    int value = 0;
+    int target = 0;
 
     if (i < 10) { // BASS
-      value = displayPacket.bass_percent;
+      target = displayPacket.bass_percent;
       float curve = 1.0 - (abs(i - 5) / 6.0);
-      value = value * curve;
+      target = target * curve;
     } else if (i < 22) { // MIDS
-      value = displayPacket.mids_percent;
+      target = displayPacket.mids_percent;
       float curve = 1.0 - (abs(i - 16) / 8.0);
-      value = value * curve;
+      target = target * curve;
     } else { // HIGHS
-      value = displayPacket.highs_percent;
+      target = displayPacket.highs_percent;
       float curve = 1.0 - (abs(i - 27) / 6.0);
-      value = value * curve;
+      target = target * curve;
     }
-    barHeight[i] = constrain(value, 2, 100);
+
+    // Add subtle random noise for liveliness
+    target += random(-2, 3);
+    target = constrain(target, 2, 100);
+
+    // Smooth animation: gradually move toward target
+    barHeight[i] = (barHeight[i] * 0.7) + (target * 0.3);
   }
 }
 
@@ -289,7 +295,7 @@ void drawSpectrumLoop() {
 
   for (int i = 0; i < NUM_BARS; i++) {
     int x = startX + i * (barW + gap);
-    int h = map(barHeight[i], 0, 100, 0, SPECTRUM_H);
+    int h = map((int)barHeight[i], 0, 100, 0, SPECTRUM_H);
     uint16_t color = getBarColor(i);
 
     // Clear column and draw bar
