@@ -11,7 +11,7 @@
 
 // ========== CONFIGURATION ==========
 // UPDATE THIS WITH YOUR RECEIVER'S MAC ADDRESS!
-uint8_t receiverMAC[] = {0xEC, 0xE3, 0x34, 0x1A, 0x7F, 0x38};
+uint8_t receiverMAC[] = {0x24, 0x6F, 0x28, 0x2D, 0x18, 0xD8};
 
 // I2S Pins
 #define I2S_WS    15
@@ -170,6 +170,8 @@ void setup() {
 
   // Initialize WiFi and ESP-NOW
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
   Serial.print("✓ MAC Address: ");
   Serial.println(WiFi.macAddress());
 
@@ -182,9 +184,11 @@ void setup() {
   esp_now_register_send_cb(onDataSent);
 
   esp_now_peer_info_t peerInfo;
+  memset(&peerInfo, 0, sizeof(peerInfo));
   memcpy(peerInfo.peer_addr, receiverMAC, 6);
   peerInfo.channel = 0;
   peerInfo.encrypt = false;
+  peerInfo.ifidx = WIFI_IF_STA;
 
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
     Serial.println("ERROR: Failed to add peer");
@@ -291,34 +295,34 @@ void loop() {
   // Send packet
   esp_now_send(receiverMAC, (uint8_t *)&packet, sizeof(packet));
 
-  // Display
-  if (now - last_display >= DISPLAY_INTERVAL) {
-    last_display = now;
+  // Display (commented out to reduce serial monitor spam)
+  // if (now - last_display >= DISPLAY_INTERVAL) {
+  //   last_display = now;
 
-    Serial.print("dB: ");
-    Serial.print(db, 1);
-    Serial.print(" | B:");
-    Serial.print(bass_energy, 0);
-    Serial.print(" M:");
-    Serial.print(mids_energy, 0);
-    Serial.print(" H:");
-    Serial.print(highs_energy, 0);
-    Serial.println();
+  //   Serial.print("dB: ");
+  //   Serial.print(db, 1);
+  //   Serial.print(" | B:");
+  //   Serial.print(bass_energy, 0);
+  //   Serial.print(" M:");
+  //   Serial.print(mids_energy, 0);
+  //   Serial.print(" H:");
+  //   Serial.print(highs_energy, 0);
+  //   Serial.println();
 
-    printBar(db);
+  //   printBar(db);
 
-    Serial.print("Vibe: ");
-    Serial.print(vibeStateToString((VibeState)packet.vibe_state));
-    Serial.print(" | Packet: dB=");
-    Serial.print(packet.db_percent);
-    Serial.print("% B=");
-    Serial.print(packet.bass_percent);
-    Serial.print(" M=");
-    Serial.print(packet.mids_percent);
-    Serial.print(" H=");
-    Serial.print(packet.highs_percent);
-    Serial.print(" Δ=");
-    Serial.println(packet.db_delta);
-    Serial.println();
-  }
+  //   Serial.print("Vibe: ");
+  //   Serial.print(vibeStateToString((VibeState)packet.vibe_state));
+  //   Serial.print(" | Packet: dB=");
+  //   Serial.print(packet.db_percent);
+  //   Serial.print("% B=");
+  //   Serial.print(packet.bass_percent);
+  //   Serial.print(" M=");
+  //   Serial.print(packet.mids_percent);
+  //   Serial.print(" H=");
+  //   Serial.print(packet.highs_percent);
+  //   Serial.print(" Δ=");
+  //   Serial.println(packet.db_delta);
+  //   Serial.println();
+  // }
 }
