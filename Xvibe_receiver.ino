@@ -87,7 +87,6 @@ bool screenOn = true;
 
 // State caching (prevents flicker)
 int prevDB = -1;
-int prevDelta = -999;
 int prevVibeState = -1;
 int prevHumanVibe = -1;
 int prevDevices = -1;
@@ -203,24 +202,17 @@ void drawStaticLayout() {
 void updateTopDashboard() {
   tft.setTextSize(1);
 
-  // 1. dB LEVEL with real db_delta
-  if (displayPacket.db_percent != prevDB || displayPacket.db_delta != prevDelta) {
+  // 1. dB LEVEL
+  if (displayPacket.db_percent != prevDB) {
     prevDB = displayPacket.db_percent;
-    prevDelta = displayPacket.db_delta;
 
     tft.setTextFont(6);
     tft.setTextDatum(TL_DATUM);
     tft.setTextColor(C_VAL_DB, C_BG);
 
-    int x = tft.drawNumber(displayPacket.db_percent, 15, 40);
-
-    // Draw real db_delta from packet
-    tft.setTextFont(4);
-    String dStr = (displayPacket.db_delta >= 0 ? "+" : "") + String(displayPacket.db_delta);
-    uint16_t dCol = (displayPacket.db_delta >= 0 ? C_VAL_POS : C_VAL_NEG);
-    tft.setTextColor(dCol, C_BG);
-    tft.fillRect(75, 50, 70, 30, C_BG);
-    tft.drawString(dStr, 75, 50);
+    // Clear area first to prevent ghost digits
+    tft.fillRect(15, 40, 100, 45, C_BG);
+    tft.drawNumber(displayPacket.db_percent, 15, 40);
   }
 
   // 2. Human sentiment
@@ -497,10 +489,17 @@ void loop() {
 
   // Update display (only if screen is on)
   if (screenOn) {
+    // Spectrum updates every loop (smooth animation)
     updateSpectrum();
-    updateTopDashboard();
-    updateBottomStats();
     drawSpectrumLoop();
+
+    // Dashboard text updates at readable speed (500ms rate limit)
+    static unsigned long lastDashboardUpdate = 0;
+    if (millis() - lastDashboardUpdate >= 500) {
+      lastDashboardUpdate = millis();
+      updateTopDashboard();
+      updateBottomStats();
+    }
   }
 
   delay(10);
